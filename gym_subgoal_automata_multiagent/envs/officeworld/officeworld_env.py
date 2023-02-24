@@ -1,9 +1,9 @@
 from abc import abstractmethod
 import random
 from gym import spaces
-from gym_subgoal_automata.utils.subgoal_automaton import SubgoalAutomaton
-from gym_subgoal_automata.utils import utils
-from gym_subgoal_automata.envs.gridworld.gridworld_env import GridWorldEnv, GridWorldActions
+from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
+from gym_subgoal_automata_multiagent.utils import utils
+from gym_subgoal_automata_multiagent.envs.gridworld.gridworld_env import GridWorldEnv, GridWorldActions
 
 
 class OfficeWorldObject:
@@ -105,12 +105,16 @@ class OfficeWorldEnv(GridWorldEnv):
 
     DROP_COFFEE_ON_PLANT_ENABLE = "drop_coffee_enable"  # whether the agent can drop the coffee when it steps on a plant
 
+    NO_OF_AGENTS = "10"
+
     def __init__(self, params=None):
         super().__init__(params)
 
-        self.agent = None       # agent's location
-        self.prev_agent = None  # previous agent location
-        self.init_agent = None  # agent's initial position, for resetting
+        self.no_of_agents = utils.get_param(self.params, OfficeWorldEnv.NO_OF_AGENTS)
+
+        self.agent = [None for i in range(self.no_of_agents)]       # agent's location
+        self.prev_agent = [None for i in range(self.no_of_agents)]  # previous agent location
+        self.init_agent = [None for i in range(self.no_of_agents)]  # agent's initial position, for resetting
 
         self.locations = {}     # location of the office, a, b, c and d
         self.coffee = set()     # coffee positions

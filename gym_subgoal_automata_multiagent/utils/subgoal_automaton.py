@@ -1,6 +1,6 @@
 import os
 import subprocess
-from gym_subgoal_automata.utils.condition import EdgeCondition
+from gym_subgoal_automata_multiagent.utils.condition import EdgeCondition
 
 
 class MultipleConditionsHoldException(Exception):

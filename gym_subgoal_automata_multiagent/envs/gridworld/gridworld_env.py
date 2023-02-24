@@ -2,8 +2,8 @@ from abc import ABC
 
 import numpy as np
 from gym import spaces
-from gym_subgoal_automata.utils import utils
-from gym_subgoal_automata.envs.base.base_env import BaseEnv
+from gym_subgoal_automata_multiagent.utils import utils
+from gym_subgoal_automata_multiagent.envs.base.base_env import BaseEnv
 
 
 class GridWorldActions:

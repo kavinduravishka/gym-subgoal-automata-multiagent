@@ -1,9 +1,9 @@
 import random
 from abc import ABC
 from gym import spaces
-from gym_subgoal_automata.envs.gridworld.gridworld_env import GridWorldEnv, GridWorldActions
-from gym_subgoal_automata.utils.subgoal_automaton import SubgoalAutomaton
-from gym_subgoal_automata.utils import utils
+from gym_subgoal_automata_multiagent.envs.gridworld.gridworld_env import GridWorldEnv, GridWorldActions
+from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
+from gym_subgoal_automata_multiagent.utils import utils
 
 class CraftWorldObject:
     AGENT = "A"

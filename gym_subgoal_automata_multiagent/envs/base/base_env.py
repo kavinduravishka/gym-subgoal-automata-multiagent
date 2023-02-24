@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import gym
-from gym_subgoal_automata.utils import utils
+from gym_subgoal_automata_multiagent.utils import utils
 
 
 class BaseEnv(ABC, gym.Env):

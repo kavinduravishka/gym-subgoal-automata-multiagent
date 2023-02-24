@@ -6,9 +6,9 @@ import numpy as np
 import random
 import pygame
 from gym import spaces
-from gym_subgoal_automata.utils import utils
-from gym_subgoal_automata.utils.subgoal_automaton import SubgoalAutomaton
-from gym_subgoal_automata.envs.base.base_env import BaseEnv
+from gym_subgoal_automata_multiagent.utils import utils
+from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
+from gym_subgoal_automata_multiagent.envs.base.base_env import BaseEnv
 
 
 class WaterWorldActions:

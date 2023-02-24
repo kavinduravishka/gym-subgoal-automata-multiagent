@@ -22,12 +22,12 @@ The learned subgoal automata are exported to `.png` using Graphviz. You can foll
 
 ## <a name="usage"></a>Usage
 The repository has implementations for the OfficeWorld and WaterWorld environments and different associated success/fail tasks. 
-You can find the list of all tasks in the file `gym_subgoal_automata/__init__.py`. The following is an example of how to
+You can find the list of all tasks in the file `gym_subgoal_automata_multiagent/__init__.py`. The following is an example of how to
 instantiate the OfficeWorld environment where the task is "deliver coffee to the office".
 
 ```
 import gym
-env = gym.make("gym_subgoal_automata:OfficeWorldDeliverCoffee-v0", params={"generation": "random", "environment_seed": 0})
+env = gym.make("gym_subgoal_automata_multiagent:OfficeWorldDeliverCoffee-v0", params={"generation": "random", "environment_seed": 0})
 ```
 
 You can use the method `env.play()` to use the environment with your keyboard using the `w`, `a`, `s` and `d` keys. In this task you have to observe `f` (coffee) and then `g` (office) while avoiding the `n` (plants/decorations).
