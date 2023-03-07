@@ -5,6 +5,8 @@ from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutom
 from gym_subgoal_automata_multiagent.utils import utils
 from gym_subgoal_automata_multiagent.envs.gridworld.gridworld_env import GridWorldEnv, GridWorldActions
 
+from copy import deepcopy as dc
+
 
 class OfficeWorldObject:
     AGENT = "A"
@@ -105,16 +107,20 @@ class OfficeWorldEnv(GridWorldEnv):
 
     DROP_COFFEE_ON_PLANT_ENABLE = "drop_coffee_enable"  # whether the agent can drop the coffee when it steps on a plant
 
-    NO_OF_AGENTS = "10"
+    # NUM_AGENTS = "num_agents"
 
     def __init__(self, params=None):
+        # params["num_agents"] = "10"
+        # print(params)
         super().__init__(params)
+        # print(self.params)
+        # print("\n\n")
 
-        self.no_of_agents = utils.get_param(self.params, OfficeWorldEnv.NO_OF_AGENTS)
+        # self.num_agents = int(utils.get_param(self.params, OfficeWorldEnv.NUM_AGENTS))
 
-        self.agent = [None for i in range(self.no_of_agents)]       # agent's location
-        self.prev_agent = [None for i in range(self.no_of_agents)]  # previous agent location
-        self.init_agent = [None for i in range(self.no_of_agents)]  # agent's initial position, for resetting
+        self.agents = [None for i in range(self.num_agents)]       # agent's location
+        self.prev_agents = [None for i in range(self.num_agents)]  # previous agent location
+        self.init_agents = [None for i in range(self.num_agents)]  # agent's initial position, for resetting
 
         self.locations = {}     # location of the office, a, b, c and d
         self.coffee = set()     # coffee positions
@@ -131,16 +137,16 @@ class OfficeWorldEnv(GridWorldEnv):
         self.width = 12
 
         # state
-        self.has_coffee = False
-        self.has_mail = False
-        self.visited_rooms = OfficeWorldRoomVisits.VISITED_NONE
+        self.has_coffee = [False for i in range(self.num_agents)]
+        self.has_mail = [False for i in range(self.num_agents)]
+        self.visited_rooms = [OfficeWorldRoomVisits.VISITED_NONE for i in range(self.num_agents)]
 
         # possible values for state variables
         self.num_has_coffee_values = 2
         self.num_has_mail_values = 2
         self.num_visited_room_values = OfficeWorldRoomVisits.VISITED_POSSIBLE_VALUES
 
-        self.observation_space = spaces.Discrete(self._get_num_states())
+        self.observation_space = [spaces.Discrete(self._get_num_states()) for i in range(self.num_agents)]
 
         # random generation parameters
         self.allow_coffee_and_mail_in_room = utils.get_param(self.params, OfficeWorldEnv.ALLOW_COFFEE_MAIL_IN_ROOM, True)
@@ -151,33 +157,43 @@ class OfficeWorldEnv(GridWorldEnv):
         if params is not None:
             self._load_map()
 
-    def step(self, action):
-        assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
+    # ABSTRACT METHOD FROM BASE_ENV
+    def step(self, actions): # Returns tuple of NEXT_STATE, REWARD, IS_DONE, OBSERVATIONS 
+        for agent_id in range(self.num_agents): 
+            assert self.action_space.contains(actions[agent_id]), "%r (%s) invalid" % (actions[agent_id], type(actions[agent_id]))
 
-        if self.is_game_over:
-            return self._get_state(), 0.0, True, self.get_observations()
+            if self.is_game_over[agent_id]:
+                continue
+                # FIX HERE : return / get_observations
+                # return self._get_state(), 0.0, True, self.get_observations()
 
-        target_x, target_y = self.agent
+            target_x, target_y = self.agents[agent_id]
 
-        if action == GridWorldActions.UP:
-            target_y += 1
-        elif action == GridWorldActions.DOWN:
-            target_y -= 1
-        elif action == GridWorldActions.LEFT:
-            target_x -= 1
-        elif action == GridWorldActions.RIGHT:
-            target_x += 1
+            if actions[agent_id] == GridWorldActions.UP:
+                target_y += 1
+            elif actions[agent_id] == GridWorldActions.DOWN:
+                target_y -= 1
+            elif actions[agent_id] == GridWorldActions.LEFT:
+                target_x -= 1
+            elif actions[agent_id] == GridWorldActions.RIGHT:
+                target_x += 1
+            elif actions[agent_id] == None:
+                pass
 
-        target_pos = (target_x, target_y)
-        if self._is_valid_movement(self.agent, target_pos):
-            self.prev_agent = self.agent
-            self.agent = target_pos
-            self._update_state()
+            target_pos = (target_x, target_y)
+            if self._is_valid_movement(self.agents[agent_id], target_pos):
+                self.prev_agents[agent_id] = self.agents[agent_id]
+                self.agents[agent_id] = target_pos
 
-        reward, is_done = self._get_reward(), self.is_terminal()
-        self.is_game_over = is_done
+        # Update Agents' states
+        self._update_state()
 
-        return self._get_state(), reward, is_done, self.get_observations()
+        # Get reward and terminal state for each agents observation trace
+        rewards, is_done_s = self._get_reward(), self.is_terminal()
+        # Set game over state for each agent
+        self.is_game_over = is_done_s
+
+        return self._get_state(), rewards, is_done_s, self.get_observations()
 
     def _get_num_states(self):
         num_states = self.width * self.height
@@ -186,87 +202,108 @@ class OfficeWorldEnv(GridWorldEnv):
         return num_states
 
     def _get_state(self):
+        state_ids = []
         num_states = self._get_num_states()
 
-        state_possible_values = [self.width, self.height]
-        state_variables = [self.agent[0], self.agent[1]]
+        for agent_id in range(self.num_agents):
+            state_possible_values = [self.width, self.height]
+            state_variables = [self.agents[agent_id][0], self.agents[agent_id][1]]
+    
+            if not self.hide_state_variables:
+                state_possible_values.extend([self.num_has_coffee_values, self.num_has_mail_values,
+                                            self.num_visited_room_values])
+                state_variables.extend([self.has_coffee[agent_id], self.has_mail[agent_id], self.visited_rooms[agent_id]])
+    
+            state_id = self.get_state_id(num_states, state_possible_values, state_variables)
+    
+            if self.use_one_hot_vector:
+                state_ids.append(self.get_one_hot_state(num_states, state_id))
+    
+            state_ids.append(state_id)
 
-        if not self.hide_state_variables:
-            state_possible_values.extend([self.num_has_coffee_values, self.num_has_mail_values,
-                                          self.num_visited_room_values])
-            state_variables.extend([self.has_coffee, self.has_mail, self.visited_rooms])
-
-        state_id = self.get_state_id(num_states, state_possible_values, state_variables)
-
-        if self.use_one_hot_vector:
-            return self.get_one_hot_state(num_states, state_id)
-
-        return state_id
+        return state_ids
 
     @abstractmethod
-    def is_goal_achieved(self):
+    # ABSTRACT METHOD FROM BASE_ENV
+    def is_goal_achieved(self):  # Returns whether each agent has achieved goal
         pass
 
     def _get_reward(self):
-        return 1.0 if self.is_goal_achieved() else 0.0
+        return [1.0*int(achieved) for achieved in self.is_goal_achieved()]
 
+    # ABSTRACT METHOD FROM BASE_ENV
     def is_terminal(self):
-        return self.is_deadend() or self.is_goal_achieved()
+        return [self.is_deadend()[agent_id] or self.is_goal_achieved()[agent_id] for agent_id in range(self.num_agents)]
 
+    # ABSTRACT METHOD FROM BASE_ENV
     def is_deadend(self):
-        return self.is_agent_on_plant() and not self.drop_coffee_on_plant_enable
+        return [self.is_agent_on_plant()[agent_id] and not self.drop_coffee_on_plant_enable for agent_id in range(self.num_agents)]
 
+    # ABSTRACT METHOD FROM BASE_ENV
     def is_agent_at_office(self):
-        return self.agent in self.locations and self.locations[self.agent] == OfficeWorldObject.OFFICE
+        return [self.agents[agent_id] in self.locations and self.locations[self.agents[agent_id]] == OfficeWorldObject.OFFICE 
+                for agent_id in range(self.num_agents)]
 
+    # ABSTRACT METHOD FROM BASE_ENV
     def is_agent_on_plant(self):
-        return self.agent in self.locations and self.locations[self.agent] == OfficeWorldObject.PLANT
+        return [self.agents[agent_id] in self.locations and self.locations[self.agents[agent_id]] == OfficeWorldObject.PLANT 
+                for agent_id in range(self.num_agents)]
 
+    # ABSTRACT METHOD FROM BASE_ENV
     def get_observations(self):
-        observations = set()
+        observations = []
+        for agent_id in range(self.num_agents):
+            observation = set()
 
-        for location in self.locations:
-            if location == self.agent:
-                observations.add(self.locations[location])
+            for location in self.locations:
+                if location == self.agents[agent_id]:
+                    observation.add(self.locations[location])
 
-        if self.agent in self.coffee:
-            observations.add(OfficeWorldObject.COFFEE)
+            if self.agents[agent_id] in self.coffee:
+                observation.add(OfficeWorldObject.COFFEE)
 
-        if self.agent == self.mail:
-            observations.add(OfficeWorldObject.MAIL)
+            if self.agents[agent_id] == self.mail:
+                observation.add(OfficeWorldObject.MAIL)
 
+            observations.append(observation)
+
+        # print("in officeworld.get_observations OBSERVATIONS :",observations)
         return observations
 
+    # ABSTRACT METHOD FROM BASE_ENV
     def get_observables(self):
         return [OfficeWorldObject.COFFEE, OfficeWorldObject.MAIL, OfficeWorldObject.OFFICE, OfficeWorldObject.PLANT,
                 OfficeWorldObject.ROOM_A, OfficeWorldObject.ROOM_B, OfficeWorldObject.ROOM_C, OfficeWorldObject.ROOM_D]
 
     def _update_state(self):
-        if self.prev_agent in self.locations:
-            if self.prev_agent != self.agent:
-                location = self.locations[self.prev_agent]
-                if self.visited_rooms == OfficeWorldRoomVisits.VISITED_NONE and location == OfficeWorldObject.ROOM_A:
-                    self.visited_rooms = OfficeWorldRoomVisits.VISITED_A
-                elif self.visited_rooms == OfficeWorldRoomVisits.VISITED_A and location == OfficeWorldObject.ROOM_B:
-                    self.visited_rooms = OfficeWorldRoomVisits.VISITED_AB
-                elif self.visited_rooms == OfficeWorldRoomVisits.VISITED_AB and location == OfficeWorldObject.ROOM_C:
-                    self.visited_rooms = OfficeWorldRoomVisits.VISITED_ABC
-        if self.agent in self.coffee:
-            self.has_coffee = True
-        if self.agent == self.mail:
-            self.has_mail = True
-        if self.drop_coffee_on_plant_enable and self.is_agent_on_plant() and self.has_coffee:
-            self.has_coffee = False
+        for agent_id in range(self.num_agents):
+            if self.prev_agents[agent_id] in self.locations:
+                if self.prev_agents[agent_id] != self.agents[agent_id]:
+                    location = self.locations[self.prev_agents[agent_id]]
+                    if self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_NONE and location == OfficeWorldObject.ROOM_A:
+                        self.visited_rooms[agent_id] = OfficeWorldRoomVisits.VISITED_A
+                    elif self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_A and location == OfficeWorldObject.ROOM_B:
+                        self.visited_rooms[agent_id] = OfficeWorldRoomVisits.VISITED_AB
+                    elif self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_AB and location == OfficeWorldObject.ROOM_C:
+                        self.visited_rooms[agent_id] = OfficeWorldRoomVisits.VISITED_ABC
+            if self.agents[agent_id] in self.coffee:
+                self.has_coffee[agent_id] = True
+            if self.agents[agent_id] == self.mail:
+                self.has_mail[agent_id] = True
+            if self.drop_coffee_on_plant_enable and self.is_agent_on_plant()[agent_id] and self.has_coffee[agent_id]:
+                self.has_coffee[agent_id] = False
 
+    # ABSTRACT METHOD FROM BASE_ENV
     def reset(self):
         super().reset()
 
         # set initial state
-        self.agent = self.init_agent
-        self.prev_agent = None
-        self.has_coffee = False
-        self.has_mail = False
-        self.visited_rooms = OfficeWorldRoomVisits.VISITED_NONE
+        self.agents = dc(self.init_agents)
+        # print("\nENV_RESET: INIT STATES :",self.init_agents)
+        self.prev_agents = [None for i in range(self.num_agents)]
+        self.has_coffee = [False for i in range(self.num_agents)]
+        self.has_mail = [False for i in range(self.num_agents)]
+        self.visited_rooms = [OfficeWorldRoomVisits.VISITED_NONE for i in range(self.num_agents)]
 
         # update initial state according to the map layout
         self._update_state()
@@ -293,7 +330,7 @@ class OfficeWorldEnv(GridWorldEnv):
         random_gen = random.Random(self.seed)
 
         # agent
-        self.init_agent = self._generate_random_position(random_gen)
+        self.init_agents = [self._generate_random_position(random_gen) for i in range(self.num_agents)]
 
         # office
         self.locations[self._generate_office_random_position(random_gen)] = OfficeWorldObject.OFFICE
@@ -329,7 +366,7 @@ class OfficeWorldEnv(GridWorldEnv):
     def _generate_room_random_position(self, random_gen):
         room_pos = (-1, -1)
         while not self._is_valid_position(room_pos) \
-                or room_pos == self.init_agent \
+                or room_pos in self.init_agents \
                 or room_pos in self.locations \
                 or room_pos in self.corridor_locations \
                 or self._get_num_adjacent_rooms(room_pos) > 0 \
@@ -358,7 +395,7 @@ class OfficeWorldEnv(GridWorldEnv):
         plant_pos = (-1, -1)
         while not self._is_valid_position(plant_pos) \
                 or plant_pos in self.locations \
-                or plant_pos == self.init_agent \
+                or plant_pos in self.init_agents \
                 or plant_pos == self.mail \
                 or plant_pos in self.coffee \
                 or plant_pos in self.corridor_locations \
@@ -370,7 +407,7 @@ class OfficeWorldEnv(GridWorldEnv):
     def _load_map_from_params(self):
         map = self.params[OfficeWorldEnv.MAP_PARAM]
 
-        self.init_agent = map[OfficeWorldObject.AGENT]
+        self.init_agents = map[OfficeWorldObject.AGENT]  # IMPORTANT : Set AGENTs' initial locations in params 
         for location in map[OfficeWorldObject.COFFEE]:
             self.coffee.add(location)
 
@@ -385,7 +422,7 @@ class OfficeWorldEnv(GridWorldEnv):
 
     # load map as defined in the original Reward Machines paper
     def _load_paper_map(self):
-        self.init_agent = (2, 1)
+        self.init_agents = [(2, 1) for i in range(self.num_agents)]
 
         self.coffee.add((8, 2))
         self.coffee.add((3, 6))
@@ -460,26 +497,31 @@ class OfficeWorldEnv(GridWorldEnv):
     """
     Grid rendering
     """
+    # ABSTRACT METHOD FROM BASE_ENV
     def render(self, mode='human'):
         self._render_horizontal_line()
         for y in range(self.height - 1, -1, -1):
             print("|", end="")
             for x in range(0, self.width):
                 position = (x, y)
-                if position == self.agent:
-                    print(OfficeWorldObject.AGENT, end="")
-                elif position in self.locations:
-                    print(self.locations[position], end="")
-                elif position in self.coffee:
-                    print(OfficeWorldObject.COFFEE, end="")
-                elif position == self.mail:
-                    print(OfficeWorldObject.MAIL, end="")
-                else:
-                    print(" ", end="")
+                agents_found = False
+                for agent_id in range(self.num_agents):
+                    if position == self.agents[agent_id]:
+                        print(OfficeWorldObject.AGENT, end="")
+                        agents_found = True
+                if not agents_found:
+                    if position in self.locations:
+                        print(self.locations[position], end="")
+                    elif position in self.coffee:
+                        print(OfficeWorldObject.COFFEE, end="")
+                    elif position == self.mail:
+                        print(OfficeWorldObject.MAIL, end="")
+                    else:
+                        print(" ", end="")
 
                 wall = ((x, y), (x + 1, y))
                 if wall in self.walls:
-                    print("*", end="")
+                    print("|", end="")
                 else:
                     print(" ", end="")
             print("|")
@@ -510,7 +552,8 @@ class OfficeWorldDeliverCoffeeEnv(OfficeWorldEnv):
     Deliver coffee to the office while avoiding the plants.
     """
     def is_goal_achieved(self):
-        return self.has_coffee and self.is_agent_at_office()
+        agent_at_office_state = self.is_agent_at_office()
+        return [self.has_coffee[i] and agent_at_office_state[i] for i in range(self.num_agents)]
 
     def get_restricted_observables(self):
         return [OfficeWorldObject.COFFEE, OfficeWorldObject.OFFICE, OfficeWorldObject.PLANT]
@@ -543,7 +586,8 @@ class OfficeWorldDeliverMailEnv(OfficeWorldEnv):
     Deliver coffee to the office while avoiding the plants.
     """
     def is_goal_achieved(self):
-        return self.has_mail and self.is_agent_at_office()
+        agent_at_office_state = self.is_agent_at_office()
+        return [self.has_mail[i] and agent_at_office_state[i] for i in range(self.num_agents)]
 
     def get_restricted_observables(self):
         return [OfficeWorldObject.MAIL, OfficeWorldObject.OFFICE, OfficeWorldObject.PLANT]
@@ -570,7 +614,8 @@ class OfficeWorldDeliverCoffeeAndMailEnv(OfficeWorldEnv):
     Deliver coffee and mail to the office while avoiding the plants.
     """
     def is_goal_achieved(self):
-        return self.has_coffee and self.has_mail and self.is_agent_at_office()
+        agent_at_office_state = self.is_agent_at_office()
+        return [self.has_coffee[i] and self.has_mail[i] and agent_at_office_state[i] for i in range(self.num_agents)]
 
     def get_restricted_observables(self):
         return [OfficeWorldObject.COFFEE, OfficeWorldObject.MAIL, OfficeWorldObject.OFFICE, OfficeWorldObject.PLANT]
@@ -614,7 +659,8 @@ class OfficeWorldDeliverCoffeeOrMailEnv(OfficeWorldEnv):
     Deliver coffee or the mail to the office while avoiding the plants.
     """
     def is_goal_achieved(self):
-        return (self.has_coffee or self.has_mail) and self.is_agent_at_office()
+        agent_at_office_state = self.is_agent_at_office()
+        return [(self.has_coffee[i] or self.has_mail[i]) and agent_at_office_state[i] for i in range(self.num_agents)]
 
     def get_restricted_observables(self):
         return [OfficeWorldObject.COFFEE, OfficeWorldObject.MAIL, OfficeWorldObject.OFFICE, OfficeWorldObject.PLANT]
@@ -653,10 +699,14 @@ class OfficeWorldPatrolABEnv(OfficeWorldEnv):
     Visit rooms A and B (in that order) while avoiding the plants.
     """
     def is_goal_achieved(self):
-        if self.agent in self.locations:
-            return self.locations[self.agent] == OfficeWorldObject.ROOM_B and \
-                   self.visited_rooms == OfficeWorldRoomVisits.VISITED_A
-        return False
+        achieved_state = []
+        for agent_id in range(self.num_agents):
+            if self.agents[agent_id] in self.locations:
+                achieved_state.append(self.locations[self.agents[agent_id]] == OfficeWorldObject.ROOM_B and \
+                    self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_A)
+            achieved_state.append(False)
+
+        return achieved_state
 
     def get_restricted_observables(self):
         return [OfficeWorldObject.PLANT, OfficeWorldObject.ROOM_A, OfficeWorldObject.ROOM_B]
@@ -683,12 +733,15 @@ class OfficeWorldPatrolABStrictEnv(OfficeWorldPatrolABEnv):
     before A.
     """
     def is_deadend(self):
-        if self.agent in self.locations:
-            location = self.locations[self.agent]
-            if (self.visited_rooms == OfficeWorldRoomVisits.VISITED_NONE and location in [OfficeWorldObject.ROOM_B]) or \
-               (self.visited_rooms == OfficeWorldRoomVisits.VISITED_A and location in [OfficeWorldObject.ROOM_A]):
-                return True
-        return super().is_deadend()
+        deadend_state = super().is_deadend()
+        for agent_id in range(self.num_agents):
+            if self.agents[agent_id] in self.locations:
+                location = self.locations[self.agents[agent_id]]
+                if (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_NONE and location in [OfficeWorldObject.ROOM_B]) or \
+                (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_A and location in [OfficeWorldObject.ROOM_A]):
+                    deadend_state[agent_id] = True
+        
+        return deadend_state
 
     def get_automaton(self):
         automaton = super().get_automaton()
@@ -702,9 +755,14 @@ class OfficeWorldPatrolABCEnv(OfficeWorldEnv):
     Visit rooms A, B and C (in that order) while avoiding the plants.
     """
     def is_goal_achieved(self):
-        if self.agent in self.locations:
-            return self.locations[self.agent] == OfficeWorldObject.ROOM_C and self.visited_rooms == OfficeWorldRoomVisits.VISITED_AB
-        return False
+        achieved_state = []
+        for agent_id in range(self.num_agents):
+            if self.agents[agent_id] in self.locations:
+                achieved_state.append(self.locations[self.agents[agent_id]] == OfficeWorldObject.ROOM_C and \
+                    self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_AB)
+            achieved_state.append(False)
+
+        return achieved_state
 
     def get_restricted_observables(self):
         return [OfficeWorldObject.PLANT, OfficeWorldObject.ROOM_A, OfficeWorldObject.ROOM_B, OfficeWorldObject.ROOM_C]
@@ -734,16 +792,19 @@ class OfficeWorldPatrolABCStrictEnv(OfficeWorldPatrolABCEnv):
     visited before A, and A cannot be visited after visiting B.
     """
     def is_deadend(self):
-        if self.agent in self.locations:
-            location = self.locations[self.agent]
-            if (self.visited_rooms == OfficeWorldRoomVisits.VISITED_NONE and location in [OfficeWorldObject.ROOM_B,
-                                                                                          OfficeWorldObject.ROOM_C]) or \
-               (self.visited_rooms == OfficeWorldRoomVisits.VISITED_A and location in [OfficeWorldObject.ROOM_A,
-                                                                                       OfficeWorldObject.ROOM_C]) or \
-               (self.visited_rooms == OfficeWorldRoomVisits.VISITED_AB and location in [OfficeWorldObject.ROOM_A,
-                                                                                        OfficeWorldObject.ROOM_B]):
-                return True
-        return super().is_deadend()
+        deadend_state = super().is_deadend()
+        for agent_id in range(self.num_agents):
+            if self.agents[agent_id] in self.locations:
+                location = self.locations[self.agents[agent_id]]
+                if (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_NONE and location in [OfficeWorldObject.ROOM_B,
+                                                                                            OfficeWorldObject.ROOM_C]) or \
+                (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_A and location in [OfficeWorldObject.ROOM_A,
+                                                                                        OfficeWorldObject.ROOM_C]) or \
+                (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_AB and location in [OfficeWorldObject.ROOM_A,
+                                                                                            OfficeWorldObject.ROOM_B]):
+                    deadend_state[agent_id] = True
+        
+        return deadend_state
 
     def get_automaton(self):
         automaton = super().get_automaton()
@@ -761,9 +822,14 @@ class OfficeWorldPatrolABCDEnv(OfficeWorldEnv):
     Visit rooms A, B, C and D (in that order) while avoiding the plants.
     """
     def is_goal_achieved(self):
-        if self.agent in self.locations:
-            return self.locations[self.agent] == OfficeWorldObject.ROOM_D and self.visited_rooms == OfficeWorldRoomVisits.VISITED_ABC
-        return False
+        achieved_state = []
+        for agent_id in range(self.num_agents):
+            if self.agents[agent_id] in self.locations:
+                achieved_state.append(self.locations[self.agents[agent_id]] == OfficeWorldObject.ROOM_D and \
+                                      self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_ABC)
+            achieved_state.append(False)
+
+        return achieved_state
 
     def get_restricted_observables(self):
         return [OfficeWorldObject.PLANT, OfficeWorldObject.ROOM_A, OfficeWorldObject.ROOM_B, OfficeWorldObject.ROOM_C,
@@ -797,22 +863,25 @@ class OfficeWorldPatrolABCDStrictEnv(OfficeWorldPatrolABCDEnv):
     visited before A, and A cannot be visited after visiting B.
     """
     def is_deadend(self):
-        if self.agent in self.locations:
-            location = self.locations[self.agent]
-            if (self.visited_rooms == OfficeWorldRoomVisits.VISITED_NONE and location in [OfficeWorldObject.ROOM_B,
-                                                                                          OfficeWorldObject.ROOM_C,
-                                                                                          OfficeWorldObject.ROOM_D]) or \
-               (self.visited_rooms == OfficeWorldRoomVisits.VISITED_A and location in [OfficeWorldObject.ROOM_A,
-                                                                                       OfficeWorldObject.ROOM_C,
-                                                                                       OfficeWorldObject.ROOM_D]) or \
-               (self.visited_rooms == OfficeWorldRoomVisits.VISITED_AB and location in [OfficeWorldObject.ROOM_A,
-                                                                                        OfficeWorldObject.ROOM_B,
-                                                                                        OfficeWorldObject.ROOM_D]) or \
-               (self.visited_rooms == OfficeWorldRoomVisits.VISITED_ABC and location in [OfficeWorldObject.ROOM_A,
-                                                                                         OfficeWorldObject.ROOM_B,
-                                                                                         OfficeWorldObject.ROOM_C]):
-                return True
-        return super().is_deadend()
+        deadend_state = super().is_deadend()
+        for agent_id in range(self.num_agents):
+            if self.agents[agent_id] in self.locations:
+                location = self.locations[self.agents[agent_id]]
+                if (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_NONE and location in [OfficeWorldObject.ROOM_B,
+                                                                                                OfficeWorldObject.ROOM_C,
+                                                                                                OfficeWorldObject.ROOM_D]) or \
+                    (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_A and location in [OfficeWorldObject.ROOM_A,
+                                                                                                OfficeWorldObject.ROOM_C,
+                                                                                                OfficeWorldObject.ROOM_D]) or \
+                    (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_AB and location in [OfficeWorldObject.ROOM_A,
+                                                                                                OfficeWorldObject.ROOM_B,
+                                                                                                OfficeWorldObject.ROOM_D]) or \
+                    (self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_ABC and location in [OfficeWorldObject.ROOM_A,
+                                                                                                OfficeWorldObject.ROOM_B,
+                                                                                                OfficeWorldObject.ROOM_C]):
+                    deadend_state[agent_id] = True
+        # return super().is_deadend()
+        return deadend_state
 
     def get_automaton(self):
         automaton = super().get_automaton()

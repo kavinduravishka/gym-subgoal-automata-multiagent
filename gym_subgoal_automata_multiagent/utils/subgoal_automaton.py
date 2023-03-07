@@ -38,6 +38,8 @@ class SubgoalAutomaton:
         return self.states
 
     def get_state_id(self, state):
+        if state == None:
+            return None
         return self.states.index(state)
 
     def get_num_states(self):
