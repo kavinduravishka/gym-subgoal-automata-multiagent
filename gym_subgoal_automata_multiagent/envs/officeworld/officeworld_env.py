@@ -160,7 +160,8 @@ class OfficeWorldEnv(GridWorldEnv):
     # ABSTRACT METHOD FROM BASE_ENV
     def step(self, actions): # Returns tuple of NEXT_STATE, REWARD, IS_DONE, OBSERVATIONS 
         for agent_id in range(self.num_agents): 
-            assert self.action_space.contains(actions[agent_id]), "%r (%s) invalid" % (actions[agent_id], type(actions[agent_id]))
+            if actions[agent_id] != None:
+                assert self.action_space.contains(actions[agent_id]), "%r (%s) invalid" % (actions[agent_id], type(actions[agent_id]))
 
             if self.is_game_over[agent_id]:
                 continue
@@ -189,11 +190,11 @@ class OfficeWorldEnv(GridWorldEnv):
         self._update_state()
 
         # Get reward and terminal state for each agents observation trace
-        rewards, is_done_s = self._get_reward(), self.is_terminal()
+        rewards, is_done_s = [self._get_reward()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)], self.is_terminal()
         # Set game over state for each agent
         self.is_game_over = is_done_s
 
-        return self._get_state(), rewards, is_done_s, self.get_observations()
+        return self._get_state(), rewards, is_done_s, [self.get_observations()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)]
 
     def _get_num_states(self):
         num_states = self.width * self.height
