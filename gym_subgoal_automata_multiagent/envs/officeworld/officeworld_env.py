@@ -1,6 +1,7 @@
 from abc import abstractmethod
 import random
 from gym import spaces
+import numpy as np
 from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
 from gym_subgoal_automata_multiagent.utils import utils
 from gym_subgoal_automata_multiagent.envs.gridworld.gridworld_env import GridWorldEnv, GridWorldActions
@@ -188,13 +189,15 @@ class OfficeWorldEnv(GridWorldEnv):
 
         # Update Agents' states
         self._update_state()
+        self._uptade_terminate_state()
 
         # Get reward and terminal state for each agents observation trace
-        rewards, is_done_s = [self._get_reward()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)], self.is_terminal()
+        rewards = [self._get_reward()[agent_id] if self.terminated_agents[agent_id] == False else 0.0 for agent_id in range(self.num_agents)]
+        is_done_s = self.is_terminal()
         # Set game over state for each agent
-        self.is_game_over = is_done_s
+        self.is_game_over = dc(is_done_s)
 
-        return self._get_state(), rewards, is_done_s, [self.get_observations()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)]
+        return self._get_state(), rewards, self.is_game_over, [self.get_observations()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)]
 
     def _get_num_states(self):
         num_states = self.width * self.height
@@ -275,6 +278,10 @@ class OfficeWorldEnv(GridWorldEnv):
     def get_observables(self):
         return [OfficeWorldObject.COFFEE, OfficeWorldObject.MAIL, OfficeWorldObject.OFFICE, OfficeWorldObject.PLANT,
                 OfficeWorldObject.ROOM_A, OfficeWorldObject.ROOM_B, OfficeWorldObject.ROOM_C, OfficeWorldObject.ROOM_D]
+    
+    # ABSTRACT METHOD FROM BASE_ENV
+    def get_terminated_agents(self):
+        return self.terminated_agents
 
     def _update_state(self):
         for agent_id in range(self.num_agents):
@@ -310,6 +317,14 @@ class OfficeWorldEnv(GridWorldEnv):
         self._update_state()
 
         return self._get_state()
+    
+    """
+    Agent termination
+    """
+    def _uptade_terminate_state(self):
+        is_terminal = self.is_terminal()
+        self.terminated_agents = dc(self.agents_to_be_terminated)
+        self.agents_to_be_terminated = is_terminal
 
     """
     Map loading methods

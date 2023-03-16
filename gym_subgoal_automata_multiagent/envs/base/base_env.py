@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import gym
 from gym_subgoal_automata_multiagent.utils import utils
+import numpy as np
 
 
 class BaseEnv(ABC, gym.Env):
@@ -12,6 +13,8 @@ class BaseEnv(ABC, gym.Env):
 
         self.params = params
         self.num_agents = int(utils.get_param(self.params, BaseEnv.NUM_AGENTS))
+        self.agents_to_be_terminated = np.zeros(self.num_agents, dtype=np.bool)
+        self.terminated_agents = np.zeros(self.num_agents, dtype=np.bool)
         self.is_game_over = [False]*self.num_agents
         self.seed = utils.get_param(self.params, BaseEnv.RANDOM_SEED_FIELD)
 
@@ -33,6 +36,10 @@ class BaseEnv(ABC, gym.Env):
 
     @abstractmethod
     def get_observations(self):
+        pass
+
+    @abstractmethod
+    def get_terminated_agents(self):
         pass
 
     @abstractmethod
