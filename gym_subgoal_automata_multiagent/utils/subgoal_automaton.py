@@ -61,6 +61,12 @@ class SubgoalAutomaton:
 
         self.distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
 
+    def get_outgoing_edges(self, from_state):
+        return self.edges[from_state]
+    
+    def get_outgoing_to_states(self, state):
+        return [self.get_to_state(state, edge_id) for edge_id in range(self.get_num_outgoing_edges(state))]
+
     def set_initial_state(self, state):
         """Sets the initial state (there can only be one initial state)."""
         self.initial_state = state
@@ -68,6 +74,14 @@ class SubgoalAutomaton:
     def get_initial_state(self):
         """Returns the name of the initial state."""
         return self.initial_state
+    
+    def get_accept_state(self):
+        """Returns the name of the accept state."""
+        return self.accept_state
+    
+    def get_reject_state(self):
+        """Returns the name of the reject state."""
+        return self.reject_state
 
     def set_accept_state(self, state):
         """Sets a given state as the accepting state."""
@@ -337,6 +351,10 @@ class SubgoalAutomaton:
     def get_condition(self, state, edge_id):
         """Returns the condition for an edge of a given state."""
         return self.edges[state][edge_id][0]
+    
+    def get_to_state(self, state, edge_id):
+        """Returns the outgoing states for an edge of a given state."""
+        return self.edges[state][edge_id][1]
 
 
 # Usage example
