@@ -1,6 +1,7 @@
 from copy import deepcopy as dc
 
 from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
+from gym_subgoal_automata_multiagent.utils.combined_subgoal_automaton import CombinedSubgoalAutomaton
 from gym_subgoal_automata_multiagent.utils.condition import EdgeCondition
 
 
@@ -69,10 +70,10 @@ def combine(automata1:SubgoalAutomaton,automata2:SubgoalAutomaton):
         edge_data_2 = []
 
         for e1 in edges_1:
-            edge_data_1.append({"from":s_A1, "to":e1[1], "pos":set(_extract_positive_literals(e1)), "neg":set(_extract_negative_literals(e1)) })
+            edge_data_1.append({"from":s_A1, "to":e1[1], "pos":set(_extract_positive_literals(e1)), "neg":set(_extract_negative_literals(e1))})
         
         for e2 in edges_2:
-            edge_data_2.append({"from":s_A2, "to":e2[1], "pos":set(_extract_positive_literals(e2)), "neg":set(_extract_negative_literals(e2)) })
+            edge_data_2.append({"from":s_A2, "to":e2[1], "pos":set(_extract_positive_literals(e2)), "neg":set(_extract_negative_literals(e2))})
 
         edges_not_merged_1 = dc(edge_data_1)
         edges_not_merged_2 = dc(edge_data_2)
@@ -282,6 +283,7 @@ if __name__ == "__main__":
     dfa1 = SubgoalAutomaton()
     dfa1.add_state("u0")
     dfa1.add_state("u1")
+    dfa1.add_state("u2")
     dfa1.add_state("uA")
     dfa1.add_state("uR")
     dfa1.set_initial_state("u0")
@@ -289,6 +291,8 @@ if __name__ == "__main__":
     dfa1.set_reject_state("uR")
 
     dfa1.add_edge("u0", "u1", ["f", "~g"])
+    dfa1.add_edge("u0", "u2", ["4"])
+    dfa1.add_edge("u2", "uR", ["f", "~g"])
     dfa1.add_edge("u0", "uA", ["f", "g"])
     dfa1.add_edge("u0", "uR", ["n", "~f", "~g"])
     dfa1.add_edge("u1", "uA", ["g"])
@@ -317,6 +321,7 @@ if __name__ == "__main__":
     dfa2.add_edge("u1", "u3", ["2"])
     dfa2.add_edge("u2", "u3", ["3"])
     dfa2.add_edge("u0", "u4", ["4"])
+    dfa2.add_edge("u4", "uR", ["x"])
     dfa2.add_edge("u2", "uA", ["A1"])
     dfa2.add_edge("u3", "uA", ["A2"])
     dfa2.add_edge("u3", "uR", ["R1"])
