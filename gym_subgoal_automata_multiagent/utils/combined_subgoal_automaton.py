@@ -1,7 +1,7 @@
 from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
 
-class SharedSubgoalAutomaton(SubgoalAutomaton):
+class CombinedSubgoalAutomaton(SubgoalAutomaton):
     def __init__(self):
-        super.__init__()
+        super().__init__()
 
     
