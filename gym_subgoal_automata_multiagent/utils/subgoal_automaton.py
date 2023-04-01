@@ -23,7 +23,7 @@ class SubgoalAutomaton:
         self.accept_state = None
         self.reject_state = None
         self.distance_matrix = None
-        self.multiple_condition_tie_breaker = tb_shortest_distance_to_goal
+        self.multiple_condition_tie_breaker = tb_min_shortest_distance_to_goal
         # self.multiple_condition_tie_breaker = None
 
     def add_state(self, state):
@@ -368,13 +368,57 @@ class SubgoalAutomaton:
     Multiple condition tie breaking
     '''
     
-def tb_shortest_distance_to_goal(edges,automaton:SubgoalAutomaton):
+def tb_min_shortest_distance_to_goal(edges,automaton:SubgoalAutomaton):
     goal_state = automaton.accept_state
     candidates_with_distance = []
     for condition, candidate_state in edges:
         candidates_with_distance.append((candidate_state,automaton.get_distance(candidate_state,goal_state,"min_distance")))
     return sorted(candidates_with_distance, key=lambda x: x[1])[0][0]
 
+def tb_max_shortest_distance_to_reject(edges,automaton:SubgoalAutomaton):
+    reject_state = automaton.reject_state
+    candidates_with_distance = []
+    for condition, candidate_state in edges:
+        candidates_with_distance.append((candidate_state,automaton.get_distance(candidate_state,reject_state,"min_distance")))
+    return sorted(candidates_with_distance, key=lambda x: x[1])[-1][0]
+
+def tb_max_shortest_distance_from_init(edges,automaton:SubgoalAutomaton):
+    initial_state = automaton.initial_state
+    candidates_with_distance = []
+    for condition, candidate_state in edges:
+        candidates_with_distance.append((candidate_state,automaton.get_distance(initial_state, candidate_state, "min_distance")))
+    return sorted(candidates_with_distance, key=lambda x: x[1])[-1][0]
+
+def tb_goal_distance_to_reject_distance_ratio(edges,automaton:SubgoalAutomaton):
+    goal_state = automaton.accept_state
+    reject_state = automaton.reject_state
+    candidates_with_distance_ratio = []
+    for condition, candidate_state in edges:
+        candidates_with_distance_ratio.append(
+            (candidate_state,automaton.get_distance(candidate_state,goal_state,"min_distance")\
+             /candidate_state,automaton.get_distance(candidate_state,reject_state,"min_distance")))
+    return sorted(candidates_with_distance_ratio, key=lambda x: x[1])[0][0]
+
+def tb_max_positive_literals(edges,automaton:SubgoalAutomaton):
+    candidates_with_pos_literals = []
+    for condition, candidate_state in edges:
+        candidates_with_pos_literals.append((candidate_state,condition.get_num_positive_conditions()))
+    return sorted(candidates_with_pos_literals, key=lambda x: x[1])[-1][0]
+
+def tb_max_literals(edges,automaton:SubgoalAutomaton):
+    candidates_with_literals = []
+    for condition, candidate_state in edges:
+        candidates_with_literals.append((candidate_state,condition.get_num_positive_conditions()+condition.get_num_negative_conditions()))
+    return sorted(candidates_with_literals, key=lambda x: x[1])[-1][0]
+
+def tb_positive_priority_max_literals(edges,automaton:SubgoalAutomaton):
+    candidates_with_pos_literals = []
+    for condition, candidate_state in edges:
+        candidates_with_pos_literals.append((candidate_state,condition.get_num_positive_conditions()))
+    if sorted(candidates_with_pos_literals, key=lambda x: x[1])[-1][0] != sorted(candidates_with_pos_literals, key=lambda x: x[1])[-2][0]:
+        return sorted(candidates_with_pos_literals, key=lambda x: x[1])[-1][0]
+    else:
+        return tb_max_literals(edges,automaton)
 
 # Usage example
 if __name__ == "__main__":

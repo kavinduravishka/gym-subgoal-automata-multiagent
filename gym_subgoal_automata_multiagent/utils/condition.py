@@ -50,3 +50,9 @@ class EdgeCondition(Condition):
     def get_negative_conditions(self):
         return [x[1:] for x in self.condition if x.startswith("~")]
     
+    def get_num_positive_conditions(self):
+        return len([x for x in self.condition if not x.startswith("~")])
+    
+    def get_num_negative_conditions(self):
+        return len([x[1:] for x in self.condition if x.startswith("~")])
+    
