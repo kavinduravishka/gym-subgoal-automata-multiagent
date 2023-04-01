@@ -23,6 +23,8 @@ class SubgoalAutomaton:
         self.accept_state = None
         self.reject_state = None
         self.distance_matrix = None
+        self.multiple_condition_tie_breaker = tb_shortest_distance_to_goal
+        # self.multiple_condition_tie_breaker = None
 
     def add_state(self, state):
         """Adds a state to the set of states and creates an entry in the set of edges that go from that state."""
@@ -237,7 +239,13 @@ class SubgoalAutomaton:
                 candidate_states.add(candidate_state)
 
         if len(candidate_states) > 1:
-            raise MultipleConditionsHoldException
+            if self.multiple_condition_tie_breaker == None:
+                raise MultipleConditionsHoldException
+            tie_break_candidate = []
+            for condition, candidate_state in self.edges[current_state]:
+                if condition.is_satisfied(observations):
+                    tie_break_candidate.append((condition,candidate_state))
+            return self.multiple_condition_tie_breaker(tie_break_candidate,self)
         elif len(candidate_states) == 1:
             return candidate_states.pop()
         return current_state
@@ -355,6 +363,17 @@ class SubgoalAutomaton:
     def get_to_state(self, state, edge_id):
         """Returns the outgoing states for an edge of a given state."""
         return self.edges[state][edge_id][1]
+    
+    '''
+    Multiple condition tie breaking
+    '''
+    
+def tb_shortest_distance_to_goal(edges,automaton:SubgoalAutomaton):
+    goal_state = automaton.accept_state
+    candidates_with_distance = []
+    for condition, candidate_state in edges:
+        candidates_with_distance.append((candidate_state,automaton.get_distance(candidate_state,goal_state,"min_distance")))
+    return sorted(candidates_with_distance, key=lambda x: x[1])[0][0]
 
 
 # Usage example
