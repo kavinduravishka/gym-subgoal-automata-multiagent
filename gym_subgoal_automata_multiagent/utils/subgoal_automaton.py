@@ -19,6 +19,7 @@ class SubgoalAutomaton:
     def __init__(self):
         self.states = []
         self.edges = {}
+        self.edge_reverse = {}
         self.initial_state = None
         self.accept_state = None
         self.reject_state = None
@@ -32,8 +33,41 @@ class SubgoalAutomaton:
             self.states.append(state)
             self.states.sort()
             self.edges[state] = []
+            self.edge_reverse[state] = []
 
         self.distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
+
+    def absorb_state(self, into, absorbee):
+        reverse_edges = self.edge_reverse[absorbee]
+        forward_edges = self.get_outgoing_edges(absorbee)
+
+        incoming_edges = {from_state : [] for from_state in self._unique_states_in_edges(reverse_edges)}
+        for (condition, from_state) in reverse_edges:
+            incoming_edges[from_state].append((condition, into))
+
+        for (state,edges) in incoming_edges.items():
+            for edge in edges:
+                self.add_edge(state, edge[1], edge[0])
+                self.remove_edge(state, absorbee, edge[0])
+
+        outgoing_edges = {into : []}
+        for (condition, to_state) in forward_edges:
+            outgoing_edges[into].append((condition, to_state))
+
+        for (state,edges) in outgoing_edges.items():
+            for edge in edges:
+                self.add_edge(state, edge[1], edge[0])
+                self.remove_edge(absorbee, edge[1], edge[0])
+
+        self.states.remove(absorbee)
+
+    def _unique_states_in_edges(self, edges):
+        unique_states = []
+        for (condition, state) in edges:
+            if state not in unique_states:
+                unique_states.append(state)
+
+        return unique_states
 
     def get_states(self):
         """Returns the set of states."""
@@ -58,10 +92,30 @@ class SubgoalAutomaton:
         if to_state not in self.edges:
             self.add_state(to_state)
 
-        condition = EdgeCondition(tuple(sorted(conditions)))  # keep all conditions sorted
-        self.edges[from_state].append((condition, to_state))
+        if not isinstance(conditions, EdgeCondition):
+            condition = EdgeCondition(tuple(sorted(conditions)))  # keep all conditions sorted
+        else:
+            condition = conditions
 
-        self.distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
+        if (condition, to_state) not in self.edges[from_state]:
+            self.edges[from_state].append((condition, to_state))
+            self.distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
+        if (condition, from_state) not in self.edge_reverse[to_state]:
+            self.edge_reverse[to_state].append((condition, from_state))
+            self.distance_matrix = None
+
+    def remove_edge(self, from_state, to_state, conditions):
+        if not isinstance(conditions, EdgeCondition):
+            condition = EdgeCondition(tuple(sorted(conditions)))  # keep all conditions sorted
+        else:
+            condition = conditions
+
+        if (condition, to_state) in self.edges[from_state]:
+            self.edges[from_state].remove((condition, to_state))
+            self.distance_matrix = None
+        if (condition, from_state) in self.edges[to_state]:
+            self.edge_reverse[to_state].remove((condition, to_state))
+            self.distance_matrix = None
 
     def get_outgoing_edges(self, from_state):
         return self.edges[from_state]
@@ -349,6 +403,10 @@ class SubgoalAutomaton:
     def get_num_outgoing_edges(self, state):
         """Returns the number of outgoing edges that a given state has."""
         return len(self.edges[state])
+    
+    def get_outgoing_edges(self, state):
+        """Returns the number of outgoing edges that a given state has."""
+        return self.edges[state]
 
     def get_outgoing_conditions(self, state):
         return [self.get_condition(state, edge_id) for edge_id in range(self.get_num_outgoing_edges(state))]
