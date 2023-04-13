@@ -5,6 +5,8 @@ from gym_subgoal_automata_multiagent.envs.gridworld.gridworld_env import GridWor
 from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
 from gym_subgoal_automata_multiagent.utils import utils
 
+from copy import deepcopy as dc
+
 class CraftWorldObject:
     AGENT = "A"
     WOOD = "a"
@@ -77,103 +79,126 @@ class CraftWorldEnv(GridWorldEnv, ABC):
     def __init__(self, params=None):
         super().__init__(params)
 
-        self.agent = None       # agent's location
-        self.prev_agent = None  # previous agent location
-        self.init_agent = None  # agent's initial position, for resetting
+        self.agents = [None for _ in range(self.num_agents)]       # agent's location
+        self.prev_agents = [None for _ in range(self.num_agents)]  # previous agent location
+        self.init_agents = [None for _ in range(self.num_agents)]  # agent's initial position, for resetting
 
         self.locations = {}     # locations of the objects
 
         # grid size
         self.height = utils.get_param(params, CraftWorldEnv.GRID_HEIGHT, 39)
         self.width = utils.get_param(params, CraftWorldEnv.GRID_WIDTH, 39)
-        self.observation_space = spaces.Discrete(self._get_num_states())
+        self.observation_space = [spaces.Discrete(self._get_num_states()) for _ in range(self.num_agents)]
 
         self.enforce_single_observable_per_location = utils.get_param(params, CraftWorldEnv.ENFORCE_SINGLE_OBSERVARBLE_PER_LOCATION, True)
 
         # the completion of the task is checked against the ground truth automaton
-        self.automaton = self.get_automaton()
-        self.automaton_state = None
+        self.automaton = [self.get_automaton() for _ in range(self.num_agents)]
+        self.automaton_state = [None for _ in range(self.num_agents)]
 
         self._load_map()
 
-    def step(self, action):
-        assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
+    def step(self, actions):
+        for agent_id in range(self.num_agents):
+            if actions[agent_id] != None:
+                assert self.action_space.contains(actions[agent_id]), "%r (%s) invalid" % (actions[agent_id], type(actions[agent_id]))
 
-        if self.is_game_over:
-            return self._get_state(), 0.0, True, self.get_observations()
+            if self.is_game_over[agent_id]:
+                continue
+                # return self._get_state(), 0.0, True, self.get_observations()
 
-        target_x, target_y = self.agent
+            target_x, target_y = self.agents[agent_id]
 
-        if action == GridWorldActions.UP:
-            target_y += 1
-        elif action == GridWorldActions.DOWN:
-            target_y -= 1
-        elif action == GridWorldActions.LEFT:
-            target_x -= 1
-        elif action == GridWorldActions.RIGHT:
-            target_x += 1
+            if actions[agent_id] == GridWorldActions.UP:
+                target_y += 1
+            elif actions[agent_id] == GridWorldActions.DOWN:
+                target_y -= 1
+            elif actions[agent_id] == GridWorldActions.LEFT:
+                target_x -= 1
+            elif actions[agent_id] == GridWorldActions.RIGHT:
+                target_x += 1
 
-        target_pos = (target_x, target_y)
-        if self._is_valid_position(target_pos):
-            self.prev_agent = self.agent
-            self.agent = target_pos
-            self._update_state()
+            target_pos = (target_x, target_y)
+            if self._is_valid_position(target_pos):
+                self.prev_agents[agent_id] = self.agents[agent_id]
+                self.agents[agent_id] = target_pos
 
-        reward = 1.0 if self.is_goal_achieved() else 0.0
-        self.is_game_over = self.is_terminal()
+        self._update_state()
+        self._uptade_terminate_state()
 
-        return self._get_state(), reward, self.is_game_over, self.get_observations()
+        rewards = [1.0 if self.is_goal_achieved()[agent_id] and self.terminated_agents[agent_id] == False else 0.0 for agent_id in range(self.num_agents)] 
+        self.is_game_over = dc(self.is_terminal())
+
+        return self._get_state(), rewards, self.is_game_over, [self.get_observations()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)]
 
     def _get_num_states(self):
         return self.width * self.height
 
     def _get_state(self):
+        state_ids = []
         num_states = self._get_num_states()
 
-        state_possible_values = [self.width, self.height]
-        state_variables = [self.agent[0], self.agent[1]]
+        for agent_id in range(self.num_agents):
+            state_possible_values = [self.width, self.height]
+            state_variables = [self.agents[agent_id][0], self.agents[agent_id][1]]
 
-        state_id = self.get_state_id(num_states, state_possible_values, state_variables)
+            state_id = self.get_state_id(num_states, state_possible_values, state_variables)
 
-        if self.use_one_hot_vector:
-            return self.get_one_hot_state(num_states, state_id)
+            if self.use_one_hot_vector:
+                state_ids.append(self.get_one_hot_state(num_states, state_id))
+                continue
+    
+            state_ids.append(state_id)
 
-        return state_id
+        return state_ids
 
     def get_observables(self):
         return [CraftWorldObject.WOOD, CraftWorldObject.TOOLSHED, CraftWorldObject.WORKBENCH, CraftWorldObject.GRASS,
                 CraftWorldObject.FACTORY, CraftWorldObject.IRON, CraftWorldObject.BRIDGE, CraftWorldObject.AXE]
+    
+    # ABSTRACT METHOD FROM BASE_ENV
+    def get_terminated_agents(self):
+        return self.terminated_agents
 
     def get_observations(self):
-        return set(self.locations[self.agent]) if self.agent in self.locations else {}
+        return [set(self.locations[self.agents[agent_id]]) if self.agents[agent_id] in self.locations else {} for agent_id in range(self.num_agents)]
 
     def is_terminal(self):
-        return self.automaton.is_terminal_state(self.automaton_state)
+        return [self.automaton[agent_id].is_terminal_state(self.automaton_state[agent_id]) for agent_id in range(self.num_agents)]
 
     def is_goal_achieved(self):
-        return self.automaton.is_accept_state(self.automaton_state)
+        return [self.automaton[agent_id].is_accept_state(self.automaton_state[agent_id]) for agent_id in range(self.num_agents)]
 
     def reset(self):
         super().reset()
 
         # set initial state
-        self.agent = self.init_agent
-        self.prev_agent = None
-        self.automaton_state = self.automaton.get_initial_state()
+        self.agents = self.init_agents
+        self.prev_agents = [None for _ in range(self.num_agents)]
+        self.automaton_state = [self.automaton[agent_id].get_initial_state() for agent_id in range(self.num_agents)]
 
         # update initial automaton state according to the map layout
         self._update_state()
 
         return self._get_state()
+    
+    """
+    Agent termination
+    """
+    def _uptade_terminate_state(self):
+        is_terminal = self.is_terminal()
+        self.terminated_agents = dc(self.agents_to_be_terminated)
+        self.agents_to_be_terminated = is_terminal
 
     def _update_state(self):
-        if self.prev_agent != self.agent:
-            self.automaton_state = self.automaton.get_next_state(self.automaton_state, self.get_observations())
+        for agent_id in range(self.num_agents):
+            if self.prev_agents[agent_id] != self.agents[agent_id]:
+                self.automaton_state[agent_id] = self.automaton[agent_id].get_next_state(self.automaton_state[agent_id], self.get_observations()[agent_id])
 
     def _load_map(self):
         random_gen = random.Random(self.seed)
 
-        self.init_agent = self._generate_random_pos(random_gen)
+        self.init_agents = [self._generate_random_pos(random_gen) for _ in range(self.num_agents)]
         self._add_location(CraftWorldObject.WOOD, 5, random_gen)
         self._add_location(CraftWorldObject.TOOLSHED, 2, random_gen)
         self._add_location(CraftWorldObject.WORKBENCH, 2, random_gen)
@@ -207,12 +232,16 @@ class CraftWorldEnv(GridWorldEnv, ABC):
             print(CraftWorldObject.WALL, end="")
             for x in range(self.width):
                 position = (x, y)
-                if position == self.agent:
-                    print(CraftWorldObject.AGENT, end="")
-                elif position in self.locations:
-                    print(self.locations[position][0], end="")  # just print one of the items in the position
-                else:
-                    print(" ", end="")
+                agents_found = False
+                for agent_id in range(self.num_agents):
+                    if position == self.agents[agent_id]:
+                        print(CraftWorldObject.AGENT, end="")
+                        agents_found = True
+                if not agents_found:
+                    if position in self.locations:
+                        print(self.locations[position][0], end="")  # just print one of the items in the position
+                    else:
+                        print(" ", end="")
             print(CraftWorldObject.WALL)
 
         self._render_horizontal_border()
