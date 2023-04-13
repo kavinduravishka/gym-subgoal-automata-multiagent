@@ -222,6 +222,7 @@ class OfficeWorldEnv(GridWorldEnv):
     
             if self.use_one_hot_vector:
                 state_ids.append(self.get_one_hot_state(num_states, state_id))
+                continue
     
             state_ids.append(state_id)
 
