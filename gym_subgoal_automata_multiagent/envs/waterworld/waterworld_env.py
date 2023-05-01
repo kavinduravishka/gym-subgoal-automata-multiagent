@@ -9,6 +9,7 @@ from gym import spaces
 from gym_subgoal_automata_multiagent.utils import utils
 from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
 from gym_subgoal_automata_multiagent.envs.base.base_env import BaseEnv
+from copy import deepcopy as dc
 
 
 class WaterWorldActions:
@@ -153,22 +154,22 @@ class WaterWorldEnv(BaseEnv):
         self.agent_vel_max = 3 * self.ball_velocity
 
         # agent ball and other balls to avoid or touch
-        self.agent = None
+        self.agents = [None for _ in range(self.num_agents)]
         self.balls = []
 
-        self.observation_space = spaces.Discrete(52)  # not exactly correct....
+        self.observation_space = [spaces.Discrete(52) for _ in range(self.num_agents)]  # not exactly correct....
         self.action_space = spaces.Discrete(5)
 
         # rendering attributes
         self.is_rendering = False
         self.game_display = None
 
-    def _check_sequences(self, sequences):
+    def _check_sequences(self, sequences): # check sequence for STRICT nature
         for sequence in sequences:
             if sequence.is_strict and len(sequences) > 1:
                 raise Exception("Error: Sequences containing one strict subsequence must only contain this item!")
 
-    def _get_pos_vel_new_ball(self, random_gen):
+    def _get_pos_vel_new_ball(self, random_gen): # POSITION and VELOCITY of new ball
         angle = random_gen.random() * 2 * math.pi
 
         if self.use_velocities:
@@ -176,21 +177,25 @@ class WaterWorldEnv(BaseEnv):
         else:
             vel = 0.0, 0.0
 
-        while True:
+        colliding_with_any = True
+
+        while colliding_with_any:
+            colliding_with_any = False
             pos = 2 * self.ball_radius + random_gen.random() * (self.max_x - 2 * self.ball_radius), \
                   2 * self.ball_radius + random_gen.random() * (self.max_y - 2 * self.ball_radius)
-            if not self._is_colliding(pos) and np.linalg.norm(self.agent.pos - np.array(pos), ord=2) > 4 * self.ball_radius:
-                break
+            for agent_id in range(self.num_agents):
+                if not (not self._is_colliding(agent_id, pos) and np.linalg.norm(self.agents[agent_id].pos - np.array(pos), ord=2) > 4 * self.ball_radius):
+                    colliding_with_any = True
         return pos, vel
 
-    def _is_colliding(self, pos):
-        for b in self.balls + [self.agent]:
+    def _is_colliding(self, agent_id, pos):
+        for b in self.balls + [self.agents[agent_id]]:
             if np.linalg.norm(b.pos - np.array(pos), ord=2) < 2 * self.ball_radius:
                 return True
         return False
 
     def get_observations(self):
-        return {b.color for b in self._get_current_collisions()}
+        return [{b.color for b in self._get_current_collisions(agent_id)} for agent_id in range(self.num_agents)]
 
     def get_observables(self):
         return [WaterWorldObservations.RED, WaterWorldObservations.GREEN, WaterWorldObservations.BLUE,
@@ -198,26 +203,38 @@ class WaterWorldEnv(BaseEnv):
 
     def get_restricted_observables(self):
         return self._get_symbols_from_sequence()
+    
+    def get_terminated_agents(self):
+        return self.terminated_agents
 
-    def _get_current_collisions(self):
+    def _get_current_collisions(self, agent_id):
         collisions = set()
         for b in self.balls:
-            if self.agent.is_colliding(b):
+            if self.agents[agent_id].is_colliding(b):
                 collisions.add(b)
         return collisions
 
     def is_terminal(self):
         return self.is_game_over
 
-    def step(self, action, elapsed_time=0.1):
-        assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
+    def step(self, actions, elapsed_time=0.1):
+        for agent_id in range(self.num_agents):
+            assert self.action_space.contains(actions[agent_id]), "%r (%s) invalid" % (actions[agent_id], type(actions[agent_id]))
 
-        if self.is_game_over:
-            return self._get_features(), 0.0, True, self.get_observations()
+            if self.is_game_over[agent_id]:
+                continue
+                # return self._get_features(), 0.0, True, self.get_observations()
 
-        # updating the agents velocity
-        self.agent.step(action)
-        balls_all = [self.agent] + self.balls
+            # updating the agents velocity
+            self.agents[agent_id].step(actions[agent_id])
+
+        agents_to_update = []
+
+        for agent_id in range(self.num_agents):
+            if not self.is_game_over[agent_id]:
+                agents_to_update.append(self.agents[agent_id])
+
+        balls_all = agents_to_update + self.balls
         max_x, max_y = self.max_x, self.max_y
 
         # updating position
@@ -245,27 +262,42 @@ class WaterWorldEnv(BaseEnv):
                 # reverse direction
                 b.vel *= np.array([1.0, -1.0])
 
-        observations = self.get_observations()
-        reward, is_done = self._step(observations)
+        observations = [self.get_observations()[agent_id] if actions[agent_id] != None else None for agent_id in range(self.num_agents)]
+        reward, is_done_s = self._step(observations)
 
-        if is_done:
-            self.is_game_over = True
+        # if is_done:
+        self.is_game_over = [True if is_done_s[agent_id] else False for agent_id in range(self.num_agents)]
 
-        return self._get_features(), reward, is_done, observations
+        return self._get_features(), reward, is_done_s, observations
 
     def _step(self, observations):
-        reached_terminal_state = self._update_state(observations)
-        if reached_terminal_state:
-            return 0.0, True
+        reward = []
+        is_done = []
 
-        if self.is_goal_achieved():
-            return 1.0, True
+        is_goal_achieved = self.is_goal_achieved()
 
-        return 0.0, False
+        for agent_id in range(self.num_agents):
+            reached_terminal_state = self._update_state(agent_id, observations[agent_id])
+            if reached_terminal_state:
+                reward.append(0.0)
+                is_done.append(True)
+                continue
 
-    def _update_state(self, observations):
+            if is_goal_achieved[agent_id]:
+                reward.append(1.0)
+                is_done.append(True)
+                continue
+
+            reward.append(0.0)
+            is_done.append(False)
+
+        return reward, is_done
+
+    def _update_state(self, agent_id, observations):
+        if observations == None:
+            return True
         for i in range(0, len(self.sequences)):
-            current_index = self.state[i]
+            current_index = self.state[agent_id][i]
             sequence = self.sequences[i]
             if sequence.is_strict:
                 if len(observations) == 0:
@@ -274,7 +306,7 @@ class WaterWorldEnv(BaseEnv):
                     if not self._is_subgoal_in_observation(self.last_strict_obs, observations):
                         if self._is_subgoal_in_observation(sequence.sequence[current_index], observations):
                             self.last_strict_obs = sequence.sequence[current_index]
-                            self.state[i] = current_index + 1
+                            self.state[agent_id][i] = current_index + 1
                         else:
                             return True
                 else:
@@ -284,7 +316,7 @@ class WaterWorldEnv(BaseEnv):
                     return True
                 while current_index < len(sequence.sequence) and self._is_subgoal_in_observation(sequence.sequence[current_index], observations):
                     current_index += 1
-                self.state[i] = current_index
+                self.state[agent_id][i] = current_index
 
         return False
 
@@ -302,46 +334,55 @@ class WaterWorldEnv(BaseEnv):
 
     def is_goal_achieved(self):
         # all sequences have been observed
-        for i in range(0, len(self.sequences)):
-            sequence = self.sequences[i].sequence
-            if self.state[i] != len(sequence):
-                return False
-        return True
+        is_goal_acheived = []
+
+        for agent_id in range(self.num_agents):
+            for i in range(0, len(self.sequences)):
+                sequence = self.sequences[i].sequence
+                if self.state[agent_id][i] != len(sequence):
+                    is_goal_acheived.append(False)
+                    break
+            else:
+                is_goal_acheived.append(True)
+
+        return is_goal_acheived
 
     def _get_features(self):
-        # absolute position and velocity of the agent + relative positions and velocities of the other balls with
-        # respect to the agent
-        agent, balls = self.agent, self.balls
+        # absolute position and velocity of the agents + relative positions and velocities of the other balls with
+        # respect to the agents
+        agents, balls = self.agents, self.balls
 
         if self.use_velocities:
             n_features = 4 + len(balls) * 4
-            features = np.zeros(n_features, dtype=np.float32)
+            features = np.zeros((self.num_agents, n_features), dtype=np.float32)
 
             pos_max = np.array([float(self.max_x), float(self.max_y)])
             vel_max = float(self.ball_velocity + self.agent_vel_max)
 
-            features[0:2] = agent.pos / pos_max
-            features[2:4] = agent.vel / float(self.agent_vel_max)
+            for agent_id in range(self.num_agents):
+                features[agent_id][0:2] = agents[agent_id].pos / pos_max
+                features[agent_id][2:4] = agents[agent_id].vel / float(self.agent_vel_max)
 
-            for i in range(len(balls)):
-                # if the balls are colliding, they are not included because there is nothing the agent can do about it
-                b = balls[i]
-                init = 4 * (i + 1)
-                features[init:init+2] = (b.pos - agent.pos) / pos_max
-                features[init+2:init+4] = (b.vel - agent.vel) / vel_max
+                for i in range(len(balls)):
+                    # if the balls are colliding, they are not included because there is nothing the agents can do about it
+                    b = balls[i]
+                    init = 4 * (i + 1)
+                    features[agent_id][init:init+2] = (b.pos - agents[agent_id].pos) / pos_max
+                    features[agent_id][init+2:init+4] = (b.vel - agents[agent_id].vel) / vel_max
         else:
             n_features = 4 + len(balls) * 2
-            features = np.zeros(n_features, dtype=np.float)
+            features = np.zeros((self.num_agents, n_features), dtype=np.float)
 
             pos_max = np.array([float(self.max_x), float(self.max_y)])
 
-            features[0:2] = agent.pos / pos_max
-            features[2:4] = agent.vel / float(self.agent_vel_max)
+            for agent_id in range(self.num_agents):
+                features[agent_id][0:2] = agents[agent_id].pos / pos_max
+                features[agent_id][2:4] = agents[agent_id].vel / float(self.agent_vel_max)
 
-            for i in range(len(balls)):
-                b = balls[i]
-                init = 2 * i + 4
-                features[init:init+2] = (b.pos - agent.pos) / pos_max
+                for i in range(len(balls)):
+                    b = balls[i]
+                    init = 2 * i + 4
+                    features[agent_id][init:init+2] = (b.pos - agents[agent_id].pos) / pos_max
 
         return features
 
@@ -358,9 +399,12 @@ class WaterWorldEnv(BaseEnv):
         random_gen = random.Random(seed)
 
         # adding the agent
-        pos_a = [2 * self.ball_radius + random_gen.random() * (self.max_x - 2 * self.ball_radius),
-                 2 * self.ball_radius + random_gen.random() * (self.max_y - 2 * self.ball_radius)]
-        self.agent = BallAgent("A", self.ball_radius, pos_a, [0.0, 0.0], self.agent_vel_delta, self.agent_vel_max)
+        pos_a = [
+            [2 * self.ball_radius + random_gen.random() * (self.max_x - 2 * self.ball_radius),
+             2 * self.ball_radius + random_gen.random() * (self.max_y - 2 * self.ball_radius)]
+            for _ in range(self.num_agents)
+        ]
+        self.agents = [BallAgent("A", self.ball_radius, pos_a[agent_id], [0.0, 0.0], self.agent_vel_delta, self.agent_vel_max) for agent_id in range(self.num_agents)]
 
         # adding the balls
         self.balls = []
@@ -373,9 +417,17 @@ class WaterWorldEnv(BaseEnv):
                 self.balls.append(ball)
 
         # reset current index in each sequence
-        self.state = [0] * len(self.sequences)
+        self.state = [[0] * len(self.sequences)] * self.num_agents
 
         return self._get_features()
+    
+    """
+    Agent termination
+    """
+    def _uptade_terminate_state(self):
+        is_terminal = self.is_terminal()
+        self.terminated_agents = dc(self.agents_to_be_terminated)
+        self.agents_to_be_terminated = is_terminal
 
     def render(self, mode='human'):
         if not self.is_rendering:
@@ -388,7 +440,7 @@ class WaterWorldEnv(BaseEnv):
         self.game_display.fill((255, 255, 255))
         for ball in self.balls:
             self._render_ball(self.game_display, ball, 0)
-        self._render_ball(self.game_display, self.agent, 3)
+        self._render_ball(self.game_display, self.agents, 3)
 
         pygame.display.update()
 
@@ -503,7 +555,7 @@ class WaterWorldEnv(BaseEnv):
                 for o in self.obs_to_avoid:
                     automaton.add_edge(automaton_state, "u_rej", [o])
 
-    def _get_symbols_from_sequence(self):
+    def _get_symbols_from_sequence(self): # don't change for multiagents
         symbols = set([])
         for sequence in self.sequences:
             for symbol in sequence.sequence:
@@ -514,7 +566,7 @@ class WaterWorldEnv(BaseEnv):
                         symbols.add(s)
         return sorted(list(symbols))
 
-    def _get_sequence_tuple_from_ball_sequence(self):
+    def _get_sequence_tuple_from_ball_sequence(self): # don't change for multiagents
         tuple_seq = []
         for sequence in self.sequences:
             tuple_seq.append(tuple(sequence.sequence))
