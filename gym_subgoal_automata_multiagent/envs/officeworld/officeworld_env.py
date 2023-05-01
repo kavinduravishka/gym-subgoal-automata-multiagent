@@ -197,7 +197,7 @@ class OfficeWorldEnv(GridWorldEnv):
         # Set game over state for each agent
         self.is_game_over = dc(is_done_s)
 
-        return self._get_state(), rewards, self.is_game_over, [self.get_observations()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)]
+        return self._get_state(), rewards, self.is_game_over, [self.get_observations()[agent_id] if actions[agent_id] != None else None for agent_id in range(self.num_agents)]
 
     def _get_num_states(self):
         num_states = self.width * self.height
