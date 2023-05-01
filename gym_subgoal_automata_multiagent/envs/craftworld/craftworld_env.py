@@ -129,7 +129,7 @@ class CraftWorldEnv(GridWorldEnv, ABC):
         rewards = [1.0 if self.is_goal_achieved()[agent_id] and self.terminated_agents[agent_id] == False else 0.0 for agent_id in range(self.num_agents)] 
         self.is_game_over = dc(self.is_terminal())
 
-        return self._get_state(), rewards, self.is_game_over, [self.get_observations()[agent_id] if actions[agent_id] != None else 0.0 for agent_id in range(self.num_agents)]
+        return self._get_state(), rewards, self.is_game_over, [self.get_observations()[agent_id] if actions[agent_id] != None else None for agent_id in range(self.num_agents)]
 
     def _get_num_states(self):
         return self.width * self.height
