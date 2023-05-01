@@ -77,6 +77,11 @@ class SubgoalAutomaton:
         if state == None:
             return None
         return self.states.index(state)
+    
+    def get_state_by_id(self, id):
+        if id == None:
+            return None
+        return self.states[id]
 
     def get_num_states(self):
         """Returns the number of states in the automaton."""
