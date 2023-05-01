@@ -309,6 +309,30 @@ class SubgoalAutomaton:
             return candidate_states.pop()
         return current_state
 
+    def get_all_satisfying_states(self, current_state, observations):
+        """
+        Returns all satisfying states given the current state and the current observations. If no condition
+        to a next state holds, then the next state will be the current state.
+        """
+        satisfying_states = set()
+        for condition, candidate_state in self.edges[current_state]:
+            if condition.is_satisfied(observations):
+                satisfying_states.add(candidate_state)
+
+        return list(satisfying_states)
+    
+    def get_all_satisfying_edges(self, current_state, observations):
+        """
+        Returns all satisfying states given the current state and the current observations. If no condition
+        to a next state holds, then the next state will be the current state.
+        """
+        satisfying_edges = set()
+        for condition, candidate_state in self.edges[current_state]:
+            if condition.is_satisfied(observations):
+                satisfying_edges.add((condition,candidate_state))
+
+        return list(satisfying_edges)
+
     def get_distance(self, from_state, to_state, method):
         if self.distance_matrix is None:
             self._compute_distance_matrix(method)
