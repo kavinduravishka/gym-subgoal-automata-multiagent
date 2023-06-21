@@ -189,7 +189,7 @@ class OfficeWorldEnv(GridWorldEnv):
 
         # Update Agents' states
         self._update_state()
-        self._uptade_terminate_state()
+        self._update_terminate_state()
 
         # Get reward and terminal state for each agents observation trace
         rewards = [self._get_reward()[agent_id] if self.terminated_agents[agent_id] == False else 0.0 for agent_id in range(self.num_agents)]
@@ -316,13 +316,14 @@ class OfficeWorldEnv(GridWorldEnv):
 
         # update initial state according to the map layout
         self._update_state()
+        self._update_terminate_state()
 
         return self._get_state()
     
     """
     Agent termination
     """
-    def _uptade_terminate_state(self):
+    def _update_terminate_state(self):
         is_terminal = self.is_terminal()
         self.terminated_agents = dc(self.agents_to_be_terminated)
         self.agents_to_be_terminated = is_terminal
@@ -721,6 +722,7 @@ class OfficeWorldPatrolABEnv(OfficeWorldEnv):
             if self.agents[agent_id] in self.locations:
                 achieved_state.append(self.locations[self.agents[agent_id]] == OfficeWorldObject.ROOM_B and \
                     self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_A)
+                continue
             achieved_state.append(False)
 
         return achieved_state
@@ -777,6 +779,7 @@ class OfficeWorldPatrolABCEnv(OfficeWorldEnv):
             if self.agents[agent_id] in self.locations:
                 achieved_state.append(self.locations[self.agents[agent_id]] == OfficeWorldObject.ROOM_C and \
                     self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_AB)
+                continue
             achieved_state.append(False)
 
         return achieved_state
@@ -844,6 +847,7 @@ class OfficeWorldPatrolABCDEnv(OfficeWorldEnv):
             if self.agents[agent_id] in self.locations:
                 achieved_state.append(self.locations[self.agents[agent_id]] == OfficeWorldObject.ROOM_D and \
                                       self.visited_rooms[agent_id] == OfficeWorldRoomVisits.VISITED_ABC)
+                continue
             achieved_state.append(False)
 
         return achieved_state

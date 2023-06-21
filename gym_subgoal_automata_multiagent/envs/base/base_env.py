@@ -15,7 +15,7 @@ class BaseEnv(ABC, gym.Env):
         self.num_agents = int(utils.get_param(self.params, BaseEnv.NUM_AGENTS))
         self.agents_to_be_terminated = np.zeros(self.num_agents, dtype=np.bool)
         self.terminated_agents = np.zeros(self.num_agents, dtype=np.bool)
-        self.is_game_over = [False]*self.num_agents
+        self.is_game_over = [False for _ in range(self.num_agents)]
         self.seed = utils.get_param(self.params, BaseEnv.RANDOM_SEED_FIELD)
 
     @abstractmethod
@@ -48,7 +48,8 @@ class BaseEnv(ABC, gym.Env):
 
     @abstractmethod
     def reset(self):
-        self.is_game_over = [False]*self.num_agents
+        self.is_game_over = [False for _ in range(self.num_agents)]
+        self.terminated_agents = np.zeros(self.num_agents, dtype=np.bool)
         return None
 
     @abstractmethod
