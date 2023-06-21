@@ -1,6 +1,7 @@
 import os
 import subprocess
 from gym_subgoal_automata_multiagent.utils.condition import EdgeCondition
+import numpy as np
 
 
 class MultipleConditionsHoldException(Exception):
@@ -61,6 +62,39 @@ class SubgoalAutomaton:
 
         self.states.remove(absorbee)
 
+    def reduce_redundent_states(self):
+        # print("DEBUG : reduce redundent states")
+        grouped_nodes = {}
+        for state in self.get_states():
+            if state == self.initial_state:
+                grouped_nodes["initial"] = [state]
+                continue
+            if state == self.accept_state:
+                grouped_nodes["accept"] = [state]
+                continue
+            if state == self.reject_state:
+                grouped_nodes["reject"] = [state]
+                continue
+
+            all_edges = tuple(sorted(self.edges[state]))
+            try:
+                grouped_nodes[all_edges].append(state)
+            except Exception:
+                grouped_nodes[all_edges] = []
+                grouped_nodes[all_edges].append(state)
+
+        if any([len(grouped_nodes[k]) > 1 for k in grouped_nodes.keys()]):
+            for key, group in list(grouped_nodes.items()):
+                if len(group) > 1:
+                    if self.accept_state in group or self.reject_state in group:
+                        continue
+                    # print("DEBUG : found key :", key)
+                    node_1 = group[0]
+                    other_nodes = group[1:]
+                    for o_n in other_nodes:
+                        self.absorb_state(node_1, o_n)
+            self.reduce_redundent_states()
+
     def _unique_states_in_edges(self, edges):
         unique_states = []
         for (condition, state) in edges:
@@ -118,8 +152,8 @@ class SubgoalAutomaton:
         if (condition, to_state) in self.edges[from_state]:
             self.edges[from_state].remove((condition, to_state))
             self.distance_matrix = None
-        if (condition, from_state) in self.edges[to_state]:
-            self.edge_reverse[to_state].remove((condition, to_state))
+        if (condition, from_state) in self.edge_reverse[to_state]:
+            self.edge_reverse[to_state].remove((condition, from_state))
             self.distance_matrix = None
 
     def get_outgoing_edges(self, from_state):
@@ -460,7 +494,9 @@ def tb_min_shortest_distance_to_goal(edges,automaton:SubgoalAutomaton):
     candidates_with_distance = []
     for condition, candidate_state in edges:
         candidates_with_distance.append((candidate_state,automaton.get_distance(candidate_state,goal_state,"min_distance")))
-    return sorted(candidates_with_distance, key=lambda x: x[1])[0][0]
+    distances = [x[1] for x in candidates_with_distance]
+    return candidates_with_distance[randargmin(distances)][0]
+    # return sorted(candidates_with_distance, key=lambda x: x[1])[0][0]
 
 def tb_max_shortest_distance_to_reject(edges,automaton:SubgoalAutomaton):
     reject_state = automaton.reject_state
@@ -506,6 +542,15 @@ def tb_positive_priority_max_literals(edges,automaton:SubgoalAutomaton):
         return sorted(candidates_with_pos_literals, key=lambda x: x[1])[-1][0]
     else:
         return tb_max_literals(edges,automaton)
+    
+
+    
+def randargmax(input_vector):
+    return np.random.choice(np.flatnonzero(input_vector == np.max(input_vector)))
+
+def randargmin(input_vector):
+    return np.random.choice(np.flatnonzero(input_vector == np.min(input_vector)))
+
 
 # Usage example
 if __name__ == "__main__":
