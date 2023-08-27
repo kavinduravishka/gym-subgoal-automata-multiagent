@@ -5,6 +5,8 @@ import numpy as np
 from gym_subgoal_automata_multiagent.utils.subgoal_automaton import SubgoalAutomaton
 from gym_subgoal_automata_multiagent.utils import utils
 from gym_subgoal_automata_multiagent.envs.gridworld.gridworld_env import GridWorldEnv, GridWorldActions
+import pygame
+import os
 
 from copy import deepcopy as dc
 
@@ -19,6 +21,14 @@ class OfficeWorldObject:
     ROOM_B = "b"
     ROOM_C = "c"
     ROOM_D = "d"
+
+    RENDER_IMG = {
+        AGENT : "render/agent.png",
+        COFFEE : "render/coffee.png",
+        MAIL : "render/mail.png",
+        OFFICE : "render/office.png",
+        PLANT : "render/plant.png"
+    }
 
 
 class OfficeWorldRoomVisits:
@@ -111,13 +121,7 @@ class OfficeWorldEnv(GridWorldEnv):
     # NUM_AGENTS = "num_agents"
 
     def __init__(self, params=None):
-        # params["num_agents"] = "10"
-        # print(params)
         super().__init__(params)
-        # print(self.params)
-        # print("\n\n")
-
-        # self.num_agents = int(utils.get_param(self.params, OfficeWorldEnv.NUM_AGENTS))
 
         self.agents = [None for i in range(self.num_agents)]       # agent's location
         self.prev_agents = [None for i in range(self.num_agents)]  # previous agent location
@@ -157,6 +161,8 @@ class OfficeWorldEnv(GridWorldEnv):
 
         if params is not None:
             self._load_map()
+
+        pygame.init()
 
     # ABSTRACT METHOD FROM BASE_ENV
     def step(self, actions): # Returns tuple of NEXT_STATE, REWARD, IS_DONE, OBSERVATIONS 
@@ -516,38 +522,147 @@ class OfficeWorldEnv(GridWorldEnv):
     Grid rendering
     """
     # ABSTRACT METHOD FROM BASE_ENV
-    def render(self, mode='human'):
-        self._render_horizontal_line()
-        for y in range(self.height - 1, -1, -1):
-            print("|", end="")
-            for x in range(0, self.width):
-                position = (x, y)
-                agents_found = False
-                for agent_id in range(self.num_agents):
-                    if position == self.agents[agent_id]:
-                        print(OfficeWorldObject.AGENT, end="")
-                        agents_found = True
-                if not agents_found:
-                    if position in self.locations:
-                        print(self.locations[position], end="")
-                    elif position in self.coffee:
-                        print(OfficeWorldObject.COFFEE, end="")
-                    elif position == self.mail:
-                        print(OfficeWorldObject.MAIL, end="")
-                    else:
-                        print(" ", end="")
+    def render(self, output_folder, episode, task, step):
 
-                wall = ((x, y), (x + 1, y))
-                if wall in self.walls:
-                    print("|", end="")
-                else:
-                    print(" ", end="")
-            print("|")
+        output_file = os.path.join(output_folder, str(task), str(episode), str(step) + ".png")
+        dir_name = os.path.join(output_folder, str(task), str(episode))
 
-            if y > 0:
-                self._render_horizontal_wall(y)
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
 
-        self._render_horizontal_line()
+        cell_size = 50
+        padding = 50
+
+        disp_width = self.width*cell_size + padding*2
+        disp_height = self.height*cell_size + padding*2
+
+        num_rows = self.height
+        num_cols = self.width
+
+        # cell_size = min(disp_width, disp_height) // max(num_rows, num_cols)
+
+        screen = pygame.display.set_mode((disp_width, disp_height))
+
+        wall_color = (0, 0, 0)  # Black
+
+        # Define the wall positions
+        walls =  self.walls
+
+        boundry = set()
+        boundry.add(((0, 0), (num_rows, 0)))     # Top wall
+        boundry.add(((0, 0), (0, num_cols)))     # Left wall
+        boundry.add(((0, num_cols), (num_rows, num_cols)))   # Bottom wall
+        boundry.add(((num_rows, 0), (num_rows, num_cols)))   # Right wall
+
+        # running = True
+        # while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+        screen.fill((255, 255, 255))  # Clear the screen
+
+        # Draw grid cells
+        for row in range(num_rows):
+            for col in range(num_cols):
+                rect = pygame.Rect(padding + col * cell_size, padding + row * cell_size, cell_size, cell_size)
+                pygame.draw.rect(screen, (255, 255, 0), rect)
+
+        # Draw walls
+        for wall in walls:
+            if wall[0][0] == wall[1][0] and wall[0][1] < wall[1][1]: #Horizontal wall
+                start_pos = (padding + wall[0][0] * cell_size, padding +  (wall[0][1] + 1) * cell_size)
+                end_pos = (padding + (wall[1][0] + 1) * cell_size, padding + wall[1][1] * cell_size)
+                pygame.draw.line(screen, wall_color, start_pos, end_pos, cell_size // 10)
+            if wall[0][1] == wall[1][1] and wall[0][0] < wall[1][0]: #Vertical wall
+                start_pos = (padding + (wall[0][0] + 1) * cell_size, padding +  (wall[0][1] + 1) * cell_size)
+                end_pos = (padding + (wall[1][0]) * cell_size, padding + wall[1][1] * cell_size)
+                pygame.draw.line(screen, wall_color, start_pos, end_pos, cell_size // 10)
+
+        for wall in boundry:
+            start_pos = (padding + wall[0][1] * cell_size, padding +  wall[0][0] * cell_size)
+            end_pos = (padding + wall[1][1] * cell_size, padding + wall[1][0] * cell_size)
+
+            if start_pos[0] == end_pos[0]:  # Vertical wall
+                pygame.draw.line(screen, wall_color, start_pos, end_pos, cell_size // 10)
+            elif start_pos[1] == end_pos[1]:  # Horizontal wall
+                pygame.draw.line(screen, wall_color, start_pos, end_pos, cell_size // 10)
+
+        for (loc,val) in self.locations.items():
+            if val == OfficeWorldObject.PLANT:
+                image_file = os.path.join(os.path.dirname(__file__), OfficeWorldObject.RENDER_IMG[OfficeWorldObject.PLANT])
+
+                img = pygame.image.load(image_file)
+                img = pygame.transform.scale(img, (cell_size, cell_size))
+                screen.blit(img, (padding + loc[0] * cell_size, padding + loc[1] * cell_size))
+            elif val == OfficeWorldObject.OFFICE:
+                image_file = os.path.join(os.path.dirname(__file__), OfficeWorldObject.RENDER_IMG[OfficeWorldObject.OFFICE])
+
+                img = pygame.image.load(image_file)
+                img = pygame.transform.scale(img, (cell_size, cell_size))
+                screen.blit(img, (padding + loc[0] * cell_size, padding + loc[1] * cell_size))
+            else:
+                font_size = 100
+                font = pygame.font.SysFont("Arial", font_size)  # Replace "Arial" with the desired font and font_size with the desired size
+                letter = val.upper()
+
+                text_surface = font.render(letter, True, (0, 0, 0))
+
+                scaled_text_surface = pygame.transform.scale(text_surface, (int(cell_size/2), int(cell_size/2)))
+
+
+                screen.blit(scaled_text_surface, (padding + int((loc[0] + 0.25) * cell_size), padding + int((loc[1] + 0.25) * cell_size)))
+
+        for loc in self.coffee:
+            image_file = os.path.join(os.path.dirname(__file__), OfficeWorldObject.RENDER_IMG[OfficeWorldObject.COFFEE])
+
+            img = pygame.image.load(image_file)
+            img = pygame.transform.scale(img, (cell_size, cell_size))
+
+            screen.blit(img, (padding + loc[0] * cell_size, padding + loc[1] * cell_size))
+
+        if self.agents == [None for _ in range(self.num_agents)]:
+            for loc in self.init_agents:
+                image_file = os.path.join(os.path.dirname(__file__), OfficeWorldObject.RENDER_IMG[OfficeWorldObject.AGENT])
+
+                img = pygame.image.load(image_file)
+                img = pygame.transform.scale(img, (cell_size, cell_size))
+
+                screen.blit(img, (padding + loc[0] * cell_size, padding + loc[1] * cell_size))
+        else:
+            for loc in self.agents:
+                image_file = os.path.join(os.path.dirname(__file__), OfficeWorldObject.RENDER_IMG[OfficeWorldObject.AGENT])
+
+                img = pygame.image.load(image_file)
+                img = pygame.transform.scale(img, (cell_size, cell_size))
+
+                screen.blit(img, (padding + loc[0] * cell_size, padding + loc[1] * cell_size))
+
+        loc = self.mail
+        image_file = os.path.join(os.path.dirname(__file__), OfficeWorldObject.RENDER_IMG[OfficeWorldObject.MAIL])
+
+        img = pygame.image.load(image_file)
+        img = pygame.transform.scale(img, (cell_size, cell_size))
+
+        screen.blit(img, (padding + loc[0] * cell_size, padding + loc[1] * cell_size))
+
+
+        font_size = 25
+        font = pygame.font.SysFont("Ubunto Mono", font_size)  # Replace "Arial" with the desired font and font_size with the desired size
+        text = "Episode : %d Task : %d Step : %d" %(episode, task, step) 
+
+        text_surface = font.render(text, True, (0, 0, 0))
+
+        # scaled_text_surface = pygame.transform.scale(text_surface, (int(cell_size/2), int(cell_size/2)))
+
+
+        screen.blit(text_surface, (10,10))
+
+        pygame.display.flip()
+
+        pygame.image.save(screen, output_file)
+
+        # pygame.quit()
 
     def _render_horizontal_wall(self, y):
         print("|", end="")
